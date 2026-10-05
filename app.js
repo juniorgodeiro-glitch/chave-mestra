@@ -584,7 +584,7 @@ const UF=['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA',
 const OPT={
   tipoPessoa:['Locador','Locatário','Inquilino','Fiador'],
   estadoCivil:['Solteiro(a)','Casado(a)','União estável','Divorciado(a)','Separado(a)','Viúvo(a)'],
-  tipoImovel:['Casa','Apartamento','Sala comercial','Loja','Galpão','Terreno'],
+  tipoImovel:['Casa','Apartamento','Sala comercial','Loja','Prédio comercial','Galpão','Terreno'],
   statusImovel:['Disponível','Alugado','Em manutenção'],
   indice:['IGP-M','IPCA','INPC'],
   garantia:['Fiador','Caução','Seguro fiança','Título de capitalização','Sem garantia'],
