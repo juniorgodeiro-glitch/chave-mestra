@@ -8,7 +8,7 @@ const APP_VER='1';
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const LS={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}}};
-const COLS=['itens','meses','transf','config','cm_precad','cm_pessoas','cm_imoveis','cm_contratos','cm_vistorias','cm_financeiro','cm_despesas','cm_manutencao','cm_estoque','cm_config'];
+const COLS=['itens','meses','transf','config','cm_precad','cm_pessoas','cm_imoveis','cm_contratos','cm_vistorias','cm_financeiro','cm_despesas','cm_manutencao','cm_estoque','cm_recibos','cm_config'];
 const MAX_ARQ=20*1024*1024, PARTE=750000;
 const fData=d=>{try{return d?new Date(d).toLocaleDateString('pt-BR'):''}catch(e){return ''}};
 const tsData=t=>t&&t.toDate?fData(t.toDate()):typeof t==='string'?fData(t):'';

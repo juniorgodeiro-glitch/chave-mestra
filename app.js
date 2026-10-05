@@ -467,7 +467,31 @@ const vencOf=(comp,dia)=>{const [y,m]=comp.split('-').map(Number);const last=new
 const dataExtenso=s=>{const [y,m,d]=s.split('-').map(Number);return d+' de '+MESES[m-1]+' de '+y};
 const blob=id=>window.MIDIA?window.MIDIA.src(id):'';
 
-const COLS=['precad','pessoas','imoveis','contratos','vistorias','financeiro','despesas','manutencao','estoque'];
+const COLS=['precad','pessoas','imoveis','contratos','vistorias','financeiro','despesas','manutencao','estoque','recibos'];
+const p4=n=>String(Math.round(num(n))||0).padStart(4,'0');
+const proxRecibo=()=>Math.max(0,...rows('recibos').map(r=>num(r.numero)))+1;
+const valorRecibo=f=>num((get('imoveis',f.imovel)||{}).aluguel)||num(f.aluguel)||num(f.total);
+function htmlRecibo(r){const p=get('pessoas',r.inquilino)||{},im=get('imoveis',r.imovel)||{},l=get('pessoas',r.locador)||{};
+  const via=n=>`<div class="rc"><div class="top"><div><div class="t">RECIBO DE ALUGUEL</div><div class="n">Nº ${p4(r.numero)} · ${n}ª via</div></div><div class="v">${fmt(r.valor)}</div></div>
+  <p>Recebi(emos) de <b>${esc(p.nome||'—')}</b>${p.doc?', CPF/CNPJ '+esc(p.doc):''}, a importância de <b>${fmt(r.valor)}</b> (${esc(extenso(r.valor))}), referente a <b>${esc(r.referente||('aluguel de '+fm(r.competencia)))}</b> do imóvel situado em ${esc(endereco(im)||'—')}.</p>
+  ${r.obs?`<p>${esc(r.obs)}</p>`:''}<p>Para maior clareza, firmo(amos) o presente recibo, dando plena quitação do valor acima.</p>
+  <p class="d">${esc(im.cidade||'')}${im.cidade?', ':''}${dataExtenso(r.data||TODAY)}.</p>
+  <div class="ass"><div class="l"></div><b>${esc(l.nome||C.config.empresa||'Locador(a)')}</b>${l.doc?'<div>CPF/CNPJ: '+esc(l.doc)+'</div>':''}<div>LOCADOR(A)</div></div></div>`;
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Recibo ${p4(r.numero)} - ${esc(p.nome||'')}</title><style>@page{size:A4;margin:12mm}body{font-family:Georgia,'Times New Roman',serif;font-size:11pt;color:#111;margin:0 auto;max-width:186mm}.rc{border:1.5px solid #111;border-radius:6px;padding:14px 18px;margin-bottom:8mm;break-inside:avoid;page-break-inside:avoid}.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:1px solid #999;padding-bottom:8px;margin-bottom:10px}.t{font-weight:bold;font-size:14pt;letter-spacing:.5px}.n{font-size:9.5pt;color:#444;margin-top:2px}.v{font-weight:bold;font-size:15pt;border:1.5px solid #111;padding:4px 10px;border-radius:4px;white-space:nowrap}p{text-align:justify;line-height:1.5;margin:0 0 8px}.d{text-align:right}.ass{text-align:center;margin:24px auto 0;width:62%;font-size:10pt}.ass .l{border-top:1px solid #111;margin-bottom:4px}.corte{border-top:1px dashed #777;margin:0 0 8mm;text-align:center;font:8pt sans-serif;color:#777;padding-top:2px}</style></head><body>${via(1)}<div class="corte">recorte aqui</div>${via(2)}</body></html>`}
+async function imprimirHtml(html,nomeArq){
+  if(window.MIDIA||window.__sb){try{const f=document.createElement('iframe');f.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0';document.body.appendChild(f);f.srcdoc=html;f.onload=()=>setTimeout(()=>{try{f.contentWindow.print()}catch(x){}setTimeout(()=>f.remove(),60000)},300);return}catch(x){}}
+  if(C.downloads){try{await C.downloads.save({filename:nomeArq+'.html',data:html});toast('Recibo salvo. Abra o arquivo no navegador e imprima (ou salve em PDF).')}catch(e){if(e&&e.code!=='declined')toast('Não foi possível imprimir aqui.')}return}
+  try{const w=window.open('','_blank');w.document.write(html);w.document.close();setTimeout(()=>w.print(),400)}catch(e){toast('Não foi possível imprimir aqui.')}}
+function imprimirRecibo(id){const r=get('recibos',id);if(!r)return;imprimirHtml(htmlRecibo(r),('Recibo '+p4(r.numero)+' - '+nome('pessoas',r.inquilino)).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[\\/:*?"<>|]/g,'-'))}
+async function reciboDeRec(fid,perguntar){const f=get('financeiro',fid);if(!f)return;
+  const ja=rows('recibos').find(r=>r.financeiro===fid);let op='imp';
+  if(perguntar){op=await choose('Imprimir o recibo deste aluguel?',`${nome('pessoas',f.inquilino)} · ${nome('imoveis',f.imovel)} · ${fm(f.competencia)} · ${fmt(ja?ja.valor:valorRecibo(f))}`,
+    [{label:'Imprimir o recibo',hint:'O recibo também fica guardado na aba Recibos',value:'imp'},{label:'Só guardar o recibo',hint:'Dá para imprimir depois pela aba Recibos',value:'arq'}]);if(!op)return}
+  let id=ja&&ja.id;
+  if(!id){id=uid();await put('recibos',id,MODS.recibos.beforeSave({numero:proxRecibo(),data:f.dataPagamento||TODAY,financeiro:fid,contrato:f.contrato,imovel:f.imovel,inquilino:f.inquilino,competencia:f.competencia,valor:valorRecibo(f),referente:'aluguel de '+fm(f.competencia)}));
+    if(op!=='imp')toast('Recibo nº '+p4(get('recibos',id).numero)+' guardado em Recibos.')}
+  if(op==='imp')imprimirRecibo(id)}
+const recBtn=r=>r.status==='Pago'?`<button class="icon-btn" data-recf="${esc(r.id)}" title="Recibo deste aluguel" aria-label="Recibo deste aluguel">${ICON.doc}</button>`:'';
 const chkRec=r=>`<label class="meta" style="display:inline-flex;align-items:center;gap:4px;margin-right:6px;cursor:pointer;white-space:nowrap" title="Marcar se este aluguel está pago"><input type="checkbox" data-pgchk="${esc(r.id)}" ${r.status==='Pago'?'checked':''} aria-label="Aluguel pago" style="width:18px;height:18px;cursor:pointer"> Pago</label>`;
 const chkDesp=r=>r._src==='manutencao'?'':`<label class="meta" style="display:inline-flex;align-items:center;gap:4px;margin-right:6px;cursor:pointer;white-space:nowrap" title="Marcar se esta despesa está paga"><input type="checkbox" data-dpchk="${esc(r._id||r.id)}${r._k?'|'+esc(r._k):''}" ${r.status==='Pago'?'checked':''} aria-label="Despesa paga" style="width:18px;height:18px;cursor:pointer"> Paga</label>`;
 const taxaPct=imId=>{const i=imId&&C.data.imoveis[imId];return i&&i.cobraTaxa==='Não'?0:num(C.config.taxaAdm)};
@@ -697,7 +721,7 @@ financeiro:{nome:'Recebimentos',sing:'recebimento',novo:'Novo recebimento',salvo
   cols:[['Competência',r=>`<b>${fm(r.competencia)}</b>`],['Imóvel',r=>`<b>${esc(nome('imoveis',r.imovel))}</b><div class="meta">${esc(nome('pessoas',r.inquilino))}</div>`],
     ['Vencimento',r=>fd(r.vencimento)],['Total',M$('total'),1],['Repasse',M$('repasse'),1],
     ['Situação',r=>{const s=finStatus(r);return B(s)+(s==='Atrasado'?` <span class="meta">${-days(r.vencimento)} d</span>`:s==='Pago'?` <span class="meta">${fd(r.dataPagamento)}</span>`:'')}]],
-  acts:r=>chkRec(r)+(r.status!=='Pago'?`<button class="icon-btn" data-pagar="${esc(r.id)}" title="Registrar recebimento" aria-label="Registrar recebimento">${ICON.cash}</button>`:''),
+  acts:r=>chkRec(r)+(r.status!=='Pago'?`<button class="icon-btn" data-pagar="${esc(r.id)}" title="Registrar recebimento" aria-label="Registrar recebimento">${ICON.cash}</button>`:recBtn(r)),
   tools:()=>filtros()+`<button class="btn" data-gerar>Gerar aluguéis do mês</button>`,
   foot:list=>{const t=sum(list,'total'),pg=sum(list.filter(r=>r.status==='Pago'),'total'),at=sum(list.filter(r=>finStatus(r)==='Atrasado'),'total');
     return `Total <b class="num">${fmt(t)}</b> · recebido <b class="num pos">${fmt(pg)}</b> · a receber <b class="num">${fmt(t-pg-at)}</b> · em atraso <b class="num neg">${fmt(at)}</b> · taxa de administração <b class="num">${fmt(sum(list,'taxaAdm'))}</b>`}},
@@ -744,6 +768,23 @@ manutencao:{nome:'Manutenção',sing:'chamado',novo:'Abrir chamado',salvo:'Chama
     ['Prioridade',r=>B(r.prioridade)],['Custo',M$('custo'),1],['Pago por',r=>esc(r.pagoPor||'—')],['Situação',r=>B(r.status)+(r.conclusao?` <span class="meta">${fd(r.conclusao)}</span>`:'')]],
   filt:r=>(!C.mnCat||catsOf(r).includes(C.mnCat))&&(!C.mnSt||(C.mnSt==='abertos'?r.status!=='Concluído':r.status==='Concluído')),
   tools:()=>`<select id="mnCat" class="search" style="width:auto" aria-label="Filtrar por serviço"><option value="">Todos os serviços</option>${OPT.catManut.map(c=>`<option ${C.mnCat===c?'selected':''}>${esc(c)}</option>`).join('')}</select><select id="mnSt" class="search" style="width:auto" aria-label="Filtrar por situação"><option value="">Todas as situações</option><option value="abertos" ${C.mnSt==='abertos'?'selected':''}>Em aberto</option><option value="concluidos" ${C.mnSt==='concluidos'?'selected':''}>Concluídos</option></select>`},
+recibos:{nome:'Recibos',sing:'recibo',novo:'Novo recibo',salvo:'Recibo salvo.',title:r=>'Recibo nº '+p4(r.numero)+' · '+nome('pessoas',r.inquilino),
+  defaults:()=>({data:TODAY,numero:proxRecibo(),competencia:CUR}),
+  sort:(a,b)=>num(b.numero)-num(a.numero),
+  fields:[{k:'numero',l:'Nº do recibo',t:'num',req:1},{k:'data',l:'Data do recibo',t:'date',req:1},
+    {k:'contrato',l:'Contrato',t:'ref',ref:'contratos',full:1,hint:'Preenche o inquilino, o imóvel e o valor do aluguel do imóvel.'},
+    {k:'inquilino',l:'Inquilino (quem pagou)',t:'ref',ref:'pessoas',req:1},{k:'imovel',l:'Imóvel',t:'ref',ref:'imoveis',req:1},
+    {k:'competencia',l:'Mês de referência',t:'month',req:1},{k:'valor',l:'Valor (R$)',t:'money',req:1,hint:'Vem do valor do aluguel cadastrado no imóvel.'},
+    {k:'referente',l:'Referente a',t:'text',full:1,ph:'Ex.: aluguel de out/2026'},{k:'obs',l:'Observações',t:'area',full:1}],
+  onChange:(k,v,set)=>{if(k==='contrato'){const c=get('contratos',v.contrato);if(c){set('inquilino',c.inquilino);set('imovel',c.imovel);const i=get('imoveis',c.imovel);set('valor',num(i&&i.aluguel)||num(c.aluguel))}}
+    if(k==='imovel'){const i=get('imoveis',v.imovel);if(i&&num(i.aluguel))set('valor',i.aluguel)}},
+  beforeSave:o=>{const c=get('contratos',o.contrato),i=get('imoveis',o.imovel)||{};o.locador=(c&&c.locador)||i.locador||o.locador||'';o.numero=Math.max(1,Math.round(num(o.numero)));return o},
+  filt:r=>compOk(r.competencia)&&(!C.finIm||r.imovel===C.finIm),
+  cols:[['Nº',r=>`<b class="num">${p4(r.numero)}</b>`],['Data',r=>fd(r.data)],['Inquilino',r=>`<b>${esc(nome('pessoas',r.inquilino))}</b><div class="meta">${esc(nome('imoveis',r.imovel))}</div>`],
+    ['Referente',r=>esc(r.referente||('Aluguel de '+fm(r.competencia)))],['Valor',M$('valor'),1]],
+  acts:r=>`<button class="icon-btn" data-recprint="${esc(r.id)}" title="Imprimir recibo" aria-label="Imprimir recibo">${ICON.print}</button>`,
+  tools:()=>filtros(),
+  foot:list=>`${list.length} recibo(s) · total <b class="num">${fmt(sum(list,'valor'))}</b>. Os recibos são criados ao marcar um aluguel como pago no Financeiro.`},
 estoque:{nome:'Estoque de materiais',sing:'item',novo:'Novo item',salvo:'Item salvo.',title:r=>r.item||'Item',
   defaults:()=>({unidade:'un',quantidade:0,minimo:0}),sort:(a,b)=>((num(a.quantidade)<=num(a.minimo))?0:1)-((num(b.quantidade)<=num(b.minimo))?0:1)||(a.item||'').localeCompare(b.item||''),
   fields:[{k:'item',l:'Material',t:'text',req:1,full:1},{k:'categoria',l:'Categoria',t:'text',ph:'Ex.: Elétrica'},{k:'unidade',l:'Unidade',t:'sel',opt:OPT.unidade},
@@ -758,13 +799,13 @@ estoque:{nome:'Estoque de materiais',sing:'item',novo:'Novo item',salvo:'Item sa
 MODS.precad={...MODS.pessoas,nome:'Pré-cadastros',sing:'pré-cadastro',novo:'Novo pré-cadastro',salvo:'Salvo no pré-cadastro.',
   fields:MODS.pessoas.fields.map(f=>f.k==='tipo'?{...f,l:'Classificação (quando for para Pessoas)'}:f),
   defaults:()=>({tipo:'Inquilino',recebidoEm:TODAY}),afterSave:async()=>{C.npResp=''}};
-const NAV=[['painel','Painel'],['novapessoa','Nova pessoa (WhatsApp)'],['pessoas'],['imoveis'],['contratos'],['vistorias'],['financeiro','Financeiro'],['manutencao'],['estoque'],['relatorios','Planilhas'],['config','Configurações']];
+const NAV=[['painel','Painel'],['novapessoa','Nova pessoa (WhatsApp)'],['pessoas'],['imoveis'],['contratos'],['vistorias'],['financeiro','Financeiro'],['recibos'],['manutencao'],['estoque'],['relatorios','Planilhas'],['config','Configurações']];
 const compOk=k=>(!C.fAno||String(k||'').slice(0,4)===C.fAno)&&(!C.fMes||String(k||'').slice(5,7)===C.fMes);
 const finFiltOn=()=>!!(C.fMes||C.fAno||C.finIm);
 const finFiltLbl=()=>{const M=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];return C.fMes&&C.fAno?fm(C.fAno+'-'+C.fMes):C.fMes?M[+C.fMes-1]+' (todos os anos)':C.fAno?'Ano '+C.fAno:'todos os meses'};
 async function togglePago(id,on,el){const raw={...C.data.financeiro[id]};if(!C.data.financeiro[id])return;
   if(on){const late=-(days(raw.vencimento)||0);if(late>0){el.checked=false;await pagar(id);return}
-    raw.status='Pago';raw.dataPagamento=raw.dataPagamento||TODAY;await put('financeiro',id,MODS.financeiro.beforeSave(raw));toast('Aluguel marcado como pago.')}
+    raw.status='Pago';raw.dataPagamento=raw.dataPagamento||TODAY;await put('financeiro',id,MODS.financeiro.beforeSave(raw));toast('Aluguel marcado como pago.');reciboDeRec(id,true)}
   else{const ok=await choose('Desmarcar o pagamento?',fm(raw.competencia)+' · '+nome('pessoas',raw.inquilino)+' · '+nome('imoveis',raw.imovel),[{label:'Desmarcar',value:1,danger:true}]);if(!ok){el.checked=true;return}
     raw.status='Pendente';raw.dataPagamento='';await put('financeiro',id,MODS.financeiro.beforeSave(raw));toast('Pagamento desmarcado.')}}
 function filtros(){
@@ -1386,7 +1427,7 @@ async function pagar(id){
   else opts.push({label:'Confirmar recebimento hoje',hint:'Total '+fmt(f.total),value:{m:0}});
   const c=await choose('Receber aluguel de '+fm(f.competencia),nome('pessoas',f.inquilino)+' · '+nome('imoveis',f.imovel),opts);if(!c)return;
   const raw={...C.data.financeiro[id]};raw.multa=Math.round((num(raw.multa)+c.m)*100)/100;raw.status='Pago';raw.dataPagamento=TODAY;
-  await put('financeiro',id,MODS.financeiro.beforeSave(raw));toast('Recebimento registrado.');
+  await put('financeiro',id,MODS.financeiro.beforeSave(raw));toast('Recebimento registrado.');reciboDeRec(id,true);
 }
 async function gerar(){
   const alvo=C.finMes||CUR,fin=rows('financeiro');
@@ -1511,8 +1552,10 @@ function chartSVG(o){
   const leg=[...o.bars.map(b=>`<span><i style="background:${b.color}"></i>${esc(b.name)}</span>`),o.line?`<span><i style="background:${o.line.color};height:3px"></i>${esc(o.line.name)}</span>`:''].join('');
   return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.aria||'Gráfico')}">${g}</svg></div><div class="legend">${leg}</div>`;
 }
-const W_DEF=['k_recebido','k_areceber','k_atraso','k_despesas','k_resultado','k_ocupacao','k_contratos','k_prev12','g_prev','g_real','p_reajustes','p_atraso','p_terminando','p_manut','g_lucro','p_estoque'];
+const W_DEF=['k_recibos','k_recebido','k_areceber','k_atraso','k_despesas','k_resultado','k_ocupacao','k_contratos','k_prev12','g_prev','g_real','p_reajustes','p_atraso','p_terminando','p_manut','g_lucro','p_estoque','p_recibos'];
 const WIDGETS=[
+ {id:'k_recibos',g:'Recibos',l:'Recibos emitidos no mês',k:1,f:()=>{const m=rows('recibos').filter(r=>(r.data||'').slice(0,7)===CUR);return ['Recibos do mês',m.length,`total ${fmt(sum(m,'valor'))} · ${rows('recibos').length} no arquivo`]}},
+ {id:'p_recibos',g:'Recibos',l:'Últimos recibos emitidos',f:()=>{const l=rows('recibos').sort(MODS.recibos.sort).slice(0,6);return ['Últimos recibos',rows('recibos').length,LI(l,r=>`<li><div><b>Nº ${p4(r.numero)} · ${esc(nome('pessoas',r.inquilino))}</b><div class="meta">${esc(nome('imoveis',r.imovel))} · ${fd(r.data)} · ${esc(r.referente||fm(r.competencia))}</div></div><span style="display:inline-flex;gap:8px;align-items:center"><span class="num">${fmt(r.valor)}</span><button class="icon-btn" data-recprint="${esc(r.id)}" title="Imprimir recibo" aria-label="Imprimir recibo">${ICON.print}</button></span></li>`,'Nenhum recibo emitido ainda. Eles aparecem quando um aluguel é marcado como pago.')]}},
  {id:'k_pessoas',g:'Pessoas',l:'Total de pessoas (locadores, inquilinos, fiadores)',k:1,f:()=>{const p=rows('pessoas'),n=t=>p.filter(x=>x.tipo===t).length;return ['Pessoas',p.length,`${n('Locador')} locadores · ${n('Locatário')} locatários · ${n('Inquilino')} inquilinos · ${n('Fiador')} fiadores`]}},
  {id:'p_inquilinos',g:'Pessoas',l:'Lista de inquilinos com contato',f:()=>{const ids=new Set(rows('contratos').filter(c=>c.status==='Ativo').map(c=>c.inquilino));const l=rows('pessoas').filter(p=>ids.has(p.id)).sort(MODS.pessoas.sort);
    return ['Inquilinos ativos',l.length,LI(l,p=>`<li><div><b>${esc(p.nome)}</b><div class="meta">${esc(p.telefone||'')}${p.email?' · '+esc(p.email):''}</div></div><span class="meta">${esc(p.profissao||'')}</span></li>`,'Nenhum inquilino com contrato ativo.')]}},
@@ -1555,7 +1598,7 @@ const WIDGETS=[
    return ['Estoque baixo',b.length,LI(b,e=>`<li><b>${esc(e.item)}</b><span class="num neg">${num(e.quantidade).toLocaleString('pt-BR')} ${esc(e.unidade||'')} <span class="meta">(mín. ${num(e.minimo)})</span></span></li>`,'Nenhum material abaixo do mínimo.')]}}
 ];
 const LI=(a,f,empty)=>a.length?`<ul class="plist">${a.map(f).join('')}</ul>`:`<div class="empty">${empty}</div>`;
-const painelSel=()=>Array.isArray(C.config.painel)?C.config.painel:W_DEF;
+const painelSel=()=>Array.isArray(C.config.painel)?(C.config.painelRec?C.config.painel:[...C.config.painel,'k_recibos','p_recibos']):W_DEF;
 function renderPainel(){
   const on=new Set(painelSel()),ws=WIDGETS.filter(w=>on.has(w.id));
   const ks=ws.filter(w=>w.k),charts=ws.filter(w=>w.wide),pans=ws.filter(w=>!w.k&&!w.wide);
@@ -1570,7 +1613,7 @@ const CFGF=[{k:'empresa',l:'Nome da administradora',t:'text',full:1},{k:'taxaAdm
   {k:'igpm',l:'IGP-M acumulado 12 meses (%)',t:'num'},{k:'ipca',l:'IPCA acumulado 12 meses (%)',t:'num'},{k:'inpc',l:'INPC acumulado 12 meses (%)',t:'num'}];
 /* ---------- apagar todas as informações (Configurações) ---------- */
 const LIMPAR={
-  alugueis:{nome:'Aluguéis',cols:COLS.map(c=>'cm_'+c),desc:'Pessoas, pré-cadastros, imóveis, contratos, vistorias, recebimentos, despesas, manutenção, estoque e as fotos e arquivos anexados. As Configurações (taxa, multa, contratos modelo) continuam.'},
+  alugueis:{nome:'Aluguéis',cols:COLS.map(c=>'cm_'+c),desc:'Pessoas, pré-cadastros, imóveis, contratos, vistorias, recebimentos, recibos, despesas, manutenção, estoque e as fotos e arquivos anexados. As Configurações (taxa, multa, contratos modelo) continuam.'},
   caixa:{nome:'Caixa Mensal',cols:['itens','meses','transf'],desc:'Todas as receitas, despesas, transferências e meses arquivados do Caixa Mensal. O saldo inicial volta para zero.'}};
 const vendoOutraConta=()=>!!document.querySelector('[data-a="minha"]');
 const idsDe=nm=>new Promise(res=>{let un=null,ok=false;try{un=C.db.collection(nm).onSnapshot(s=>{if(ok)return;ok=true;res(s.docs.map(d=>d.id));setTimeout(()=>{try{un&&un()}catch(e){}},0)},()=>{if(!ok){ok=true;res([])}})}catch(e){res([])}});
@@ -1634,7 +1677,7 @@ function renderConfig(){
   $('#cfgf').addEventListener('submit',async e=>{e.preventDefault();const o=readFields($('#cfgf'),CFGF,'cfg-');const err=checkFields(o,CFGF);if(err){$('#cfgerr').textContent=err;return}await put('config','geral',{...C.config,...o});toast('Configurações salvas.')});
   const pnSet=ids=>$('#cmMain').querySelectorAll('[data-pn]').forEach(b=>b.checked=ids.includes(b.dataset.pn));
   $('#pnAll').onclick=()=>pnSet(WIDGETS.map(w=>w.id));$('#pnDef').onclick=()=>pnSet(W_DEF);
-  $('#pnSave').onclick=async()=>{const ids=[...$('#cmMain').querySelectorAll('[data-pn]:checked')].map(b=>b.dataset.pn);await put('config','geral',{...C.config,painel:ids});C.mod='painel';try{localStorage.setItem(LSK+'-mod','painel')}catch(e){};document.activeElement&&document.activeElement.blur&&document.activeElement.blur();render();window.scrollTo(0,0);toast('Painel atualizado.')};
+  $('#pnSave').onclick=async()=>{const ids=[...$('#cmMain').querySelectorAll('[data-pn]:checked')].map(b=>b.dataset.pn);await put('config','geral',{...C.config,painel:ids,painelRec:1});C.mod='painel';try{localStorage.setItem(LSK+'-mod','painel')}catch(e){};document.activeElement&&document.activeElement.blur&&document.activeElement.blur();render();window.scrollTo(0,0);toast('Painel atualizado.')};
   if(C._scrollPn){C._scrollPn=0;setTimeout(()=>{const e=$('#cfgPainel');e&&e.scrollIntoView({block:'start'})},0)}
   const keep=()=>{C.mDraft[mt]={nome:$('#mdNome').value,texto:$('#mdTxt').value}};
   $('#cmMain').querySelectorAll('[data-mtab]').forEach(b=>b.onclick=()=>{keep();C.mTab=+b.dataset.mtab;renderConfig();const e=$('#cfgModelo');e&&e.scrollIntoView({block:'start'})});
@@ -1687,6 +1730,8 @@ $('#app-cm').addEventListener('click',async e=>{
   if(t.dataset.pctrans){transferirPc(t.dataset.pctrans);return}
   if(t.dataset.reaj){reajuste(t.dataset.reaj);return}
   if(t.dataset.docc){gerarDoc(t.dataset.docc);return}
+  if(t.dataset.recprint){imprimirRecibo(t.dataset.recprint);return}
+  if(t.dataset.recf){reciboDeRec(t.dataset.recf,false);return}
   if(t.dataset.printv){const w=abrirJanelaImpressao();imprimirVistoria(t.dataset.printv,w);return}
   if(t.dataset.galm){galeriaManut(t.dataset.galm);return}
   if(t.dataset.gal){gallery(t.dataset.gal);return}
@@ -1743,6 +1788,10 @@ const empresa=()=>C.config.empresa||'Chave Mestra';
 const geradoEm=()=>'Gerado em '+fd(TODAY)+' · '+empresa();
 async function wbNovo(){const X=await loadXL();const wb=new X.Workbook();wb.creator='Chave Mestra';wb.created=new Date();return wb}
 const REL={
+  async recibos(mes){const wb=await wbNovo();const l=rows('recibos').filter(r=>!mes||r.competencia===mes).sort(MODS.recibos.sort);
+    xlSheet(wb,'Recibos','Recibos de aluguel emitidos',(mes?fm(mes):'Todos os meses')+' · '+geradoEm(),[{h:'Nº',k:'n',t:'num',w:8},{h:'Data',k:'data',t:'date'},{h:'Inquilino',k:'inq',w:28},{h:'Imóvel',k:'im',w:30},{h:'Referente',k:'ref',w:30},{h:'Competência',k:'competencia',t:'month',w:12},{h:'Valor',k:'valor',t:'money'}],
+      l.map(r=>({...r,n:num(r.numero),inq:nome('pessoas',r.inquilino),im:nome('imoveis',r.imovel),ref:r.referente||'aluguel de '+fm(r.competencia),valor:num(r.valor)})));
+    await xlSave(wb,'Recibos - '+(mes?fm(mes).replace('/','-'):'todos'))},
   async geral(){const wb=await wbNovo();
     const im=rows('imoveis'),ct=rows('contratos'),fin=rows('financeiro'),mes=fin.filter(f=>f.competencia===CUR),dm=despRows().filter(d=>doDono(d)&&compOf(d)===CUR);
     const rec=sum(mes.filter(f=>f.status==='Pago'),'total'),atr=fin.filter(f=>finStatus(f)==='Atrasado'),{tot}=forecast(12);
@@ -1839,6 +1888,7 @@ function renderRelatorios(){
     ${card('Gastos por imóvel','Todas as despesas e manutenções do imóvel no ano, total por categoria e receitas × gastos mês a mês.',`<select id="relIm" class="search" style="width:auto;max-width:240px"><option value="">Todos os imóveis</option>${ims.map(i=>`<option value="${esc(i.id)}">${esc(MODS.imoveis.title(i))}</option>`).join('')}</select>${anoSel('relImAno')}`,'data-rel="gastos"')}
     ${card('Resultado por imóvel','Recebido, a receber, em atraso, despesas e lucro de cada imóvel no ano, mais o recebido mês a mês.',anoSel('relResAno'),'data-rel="resultado"')}
     ${card('Recebimentos e inadimplência','Aluguéis do mês (ou todos) com situação e repasse, e uma aba com quem está em atraso, dias e telefone.',`<input type="month" id="relRecMes" class="search" style="width:auto" value="${CUR}" title="Deixe vazio para todos os meses">`,'data-rel="recebimentos"')}
+    ${card('Recibos emitidos','Arquivo dos recibos de aluguel: número, data, inquilino, imóvel e valor. Deixe o mês vazio para baixar todos.',`<input type="month" id="relRcMes" class="search" style="width:auto" value="">`,'data-rel="recibos"')}
     ${card('Previsão 12 meses','Recebimentos, despesas e lucro previstos mês a mês, e a previsão de cada imóvel.','','data-rel="previsao"')}
   </div>
   <div class="fsec" style="border:0;margin:18px 0 8px">Caixa Mensal</div>
@@ -1850,7 +1900,7 @@ function renderRelatorios(){
 }
 function relClick(t){const r=t.dataset.rel;
   if(r==='geral')gerarRel('geral');else if(r==='gastos')gerarRel('gastos',$('#relIm').value,$('#relImAno').value);else if(r==='resultado')gerarRel('resultado',$('#relResAno').value);
-  else if(r==='recebimentos')gerarRel('recebimentos',$('#relRecMes').value);else if(r==='previsao')gerarRel('previsao');
+  else if(r==='recebimentos')gerarRel('recebimentos',$('#relRecMes').value);else if(r==='previsao')gerarRel('previsao');else if(r==='recibos')gerarRel('recibos',$('#relRcMes').value);
   else if(r==='caixaMes')gerarRel('caixaMes',$('#relCxMes').value||CUR);else if(r==='caixaAno')gerarRel('caixaAno',$('#relCxAno').value)}
 
 /* ---------- boot ---------- */
