@@ -47,3 +47,25 @@ Em **Minha conta → Baixar backup** sai um arquivo `.json` com tudo da conta ab
 
 ## Limites do plano gratuito
 O Firestore gratuito tem 1 GB de armazenamento e cotas diárias de leitura e escrita que sobram para uso pessoal e de alguns amigos. Fotos são reduzidas antes de salvar; vídeos podem ter até 20 MB cada.
+
+## Para quem vai mexer no código (guia do projeto)
+
+O site está **no ar e em uso**: os dados reais ficam no Firebase, não neste repositório. Trocar `app.js` ou `index.html` **não apaga dados**, mas um erro de código pode deixar o site fora do ar até ser corrigido.
+
+**Regras**
+- **Não altere** `config.js` nem `firestore.rules` sem combinar antes (ligação com o Firebase e segurança).
+- Em `shell.js` (login, contas, backup) mude só o necessário.
+- **Nunca** coloque neste repositório (que é público) backups `.json`, senhas ou chaves secretas do Firebase.
+- Antes de mudar algo grande, baixe um backup em **Minha conta → Baixar backup**.
+
+**Como o código está organizado (`app.js`)**
+- A parte de cima é o **Caixa Mensal** (receitas, despesas, transferências, meses).
+- A parte de baixo é **Aluguéis**. Cada aba é um módulo em `MODS` (pessoas, imóveis, contratos, vistorias, financeiro, despesas, manutenção, estoque, recibos), com campos (`fields`), colunas da lista (`cols`) e ações.
+- Os dados de Aluguéis ficam nas coleções `cm_<módulo>` do Firestore; os do Caixa em `itens`, `meses`, `transf` e `config`.
+- Contratos modelo: `MODELO`, `MODELO_COM`, `MODELO_TEMP` (o texto pode ser personalizado em Configurações; o salvo lá tem prioridade).
+
+**Como publicar uma mudança**
+1. Edite o arquivo aqui no GitHub (lápis) ou envie a versão nova em **Add file → Upload files**.
+2. Escreva uma descrição curta e clique em **Commit changes**.
+3. Em 1 a 2 minutos o site atualiza. Se aparecer a versão antiga, recarregue a página.
+4. Para desfazer, abra o histórico do arquivo (**History**), copie a versão anterior e envie de novo.
